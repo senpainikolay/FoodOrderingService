@@ -1,0 +1,13 @@
+services:
+  ordermanager:
+    build:
+      context: .
+      dockerfile: Dockerfile 
+      args:
+          configurations: configurations
+          port: 5000
+    ports:
+      - "5000:5000"
+networks:
+  default:
+    name: restaurant
