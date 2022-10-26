@@ -16,10 +16,11 @@ type Food struct {
 	CookingApparatus string `json:"cooking_apparatus"`
 }
 type RestaurantData struct {
-	Name      string  `json:"name"`
-	MenuItems int     `json:"menu_items"`
-	Menu      []Food  `json:"menu"`
-	Rating    float64 `json:"rating"`
+	RestaurnatId int     `json:"restaurant_id"`
+	Name         string  `json:"name"`
+	MenuItems    int     `json:"menu_items"`
+	Menu         []Food  `json:"menu"`
+	Rating       float64 `json:"rating"`
 }
 
 type Restaurants struct {
@@ -28,9 +29,12 @@ type Restaurants struct {
 }
 
 type RegisterPayload struct {
-	RestaurantData
-	RestaurantId int    `json:"restaurant_id"`
-	Address      string `json:"address"`
+	RestaurnatId int     `json:"restaurant_id"`
+	Name         string  `json:"name"`
+	Address      string  `json:"address"`
+	MenuItems    int     `json:"menu_items"`
+	Menu         []Food  `json:"menu"`
+	Rating       float64 `json:"rating"`
 }
 
 type MenuGet struct {

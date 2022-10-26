@@ -37,8 +37,7 @@ func RegisterRestaurant(w http.ResponseWriter, r *http.Request) {
 	res.Mutex.Lock()
 	res.Info = append(res.Info, resReg)
 	res.Mutex.Unlock()
-	// log.Println(res.Info[len(res.Info)-1])
-	fmt.Fprintf(w, "Restaurant id %v have been succesfully registered at Orders Manger", resReg.RestaurantId)
+	fmt.Fprintf(w, "Restaurant id %v have been succesfully registered at Orders Manger", resReg.RestaurnatId)
 
 }
 
@@ -55,6 +54,7 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 	wg.Add(len(ords.Orders))
 	var clientResponse structs.ClientResponse
 	clientResponse.OrderId = ords.ClientId
+	// Send order to Dining-Hall and wait for response
 	for i := range ords.Orders {
 		idx := i
 		go func() {
@@ -65,7 +65,7 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 						Priority:    ords.Orders[idx].Priority,
 						MaxWait:     ords.Orders[idx].MaxWait,
 						CreatedTime: ords.Orders[idx].CreatedTime,
-					}, res.Info[ords.Orders[idx].RestaurantId-1].Address))
+					}, res.Info[GetIndexForResId(ords.Orders[idx].RestaurantId)].Address))
 			wg.Done()
 
 		}()
@@ -75,6 +75,20 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 	resp, _ := json.Marshal(&clientResponse)
 	fmt.Fprint(w, string(resp))
 
+}
+
+func GetIndexForResId(id int) int {
+	res.Mutex.Lock()
+
+	for i, restaurant := range res.Info {
+		if restaurant.RestaurnatId == id {
+			res.Mutex.Unlock()
+			return i
+		}
+	}
+	log.Panicln("Couldnt find Restaurant Id in the storage at Food Ordering!!!")
+	res.Mutex.Unlock()
+	return -1
 }
 
 func SendOrderToDH(ord *structs.OrderToDiningHall, address string) structs.OMResponse {
@@ -114,7 +128,13 @@ func GetMenu(w http.ResponseWriter, r *http.Request) {
 	var resData []structs.RestaurantData
 	res.Mutex.Lock()
 	for i := range res.Info {
-		resData = append(resData, res.Info[i].RestaurantData)
+		resData = append(resData, structs.RestaurantData{
+			RestaurnatId: res.Info[i].RestaurnatId,
+			Name:         res.Info[i].Name,
+			MenuItems:    res.Info[i].MenuItems,
+			Menu:         res.Info[i].Menu,
+			Rating:       res.Info[i].Rating,
+		})
 	}
 	sendMenu := structs.MenuGet{
 		Restaurants:     len(res.Info),
