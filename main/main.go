@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -58,14 +59,22 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 	for i := range ords.Orders {
 		idx := i
 		go func() {
-			clientResponse.Orders = append(clientResponse.Orders,
-				SendOrderToDH(
-					&structs.OrderToDiningHall{
-						Items:       ords.Orders[idx].Items,
-						Priority:    ords.Orders[idx].Priority,
-						MaxWait:     ords.Orders[idx].MaxWait,
-						CreatedTime: ords.Orders[idx].CreatedTime,
-					}, res.Info[GetIndexForResId(ords.Orders[idx].RestaurantId)].Address))
+			addr := res.Info[GetIndexForResId(ords.Orders[idx].RestaurantId)].Address
+			// GET req to dining hall -> kitchen and returns the current number of orders being preparing
+			BusyIndex := GetBusyIndex(addr)
+
+			if BusyIndex == 0 {
+
+				clientResponse.Orders = append(clientResponse.Orders,
+					SendOrderToDH(
+						&structs.OrderToDiningHall{
+							Items:       ords.Orders[idx].Items,
+							Priority:    ords.Orders[idx].Priority,
+							MaxWait:     ords.Orders[idx].MaxWait,
+							CreatedTime: ords.Orders[idx].CreatedTime,
+						}, addr))
+
+			}
 			wg.Done()
 
 		}()
@@ -89,6 +98,24 @@ func GetIndexForResId(id int) int {
 	log.Panicln("Couldnt find Restaurant Id in the storage at Food Ordering!!!")
 	res.Mutex.Unlock()
 	return -1
+}
+
+func GetBusyIndex(address string) int {
+
+	resp, err := http.Get("http://" + address + "/getOrderStatus")
+	if err != nil {
+		log.Fatalf("An Error Occured %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	ok, _ := strconv.Atoi(string(body))
+
+	return ok
 }
 
 func SendOrderToDH(ord *structs.OrderToDiningHall, address string) structs.OMResponse {
