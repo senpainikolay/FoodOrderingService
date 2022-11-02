@@ -16,6 +16,7 @@ import (
 
 var res structs.Restaurants
 var conf = structs.GetConf()
+var rating = GetRatingStruct()
 
 func main() {
 
@@ -23,6 +24,7 @@ func main() {
 	r.HandleFunc("/register", RegisterRestaurant).Methods("POST")
 	r.HandleFunc("/order", ClientOrderPost).Methods("POST")
 	r.HandleFunc("/menu", GetMenu).Methods("GET")
+	r.HandleFunc("/rating", ClientRatingPost).Methods("POST")
 
 	http.ListenAndServe(":"+conf.Port, r)
 }
@@ -39,6 +41,64 @@ func RegisterRestaurant(w http.ResponseWriter, r *http.Request) {
 	res.Info = append(res.Info, resReg)
 	res.Mutex.Unlock()
 	fmt.Fprintf(w, "Restaurant id %v have been succesfully registered at Orders Manger", resReg.RestaurnatId)
+
+}
+func ClientRatingPost(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	// 204 status code
+	w.WriteHeader(http.StatusNoContent)
+	var clientRatingPost structs.ClientPostRating
+	err := json.NewDecoder(r.Body).Decode(&clientRatingPost)
+	if err != nil {
+		log.Fatalln("There was an error decoding the request body into the struct")
+	}
+
+	var avg_rating float64
+	avg_rating = 0.0
+	var wg sync.WaitGroup
+	wg.Add(len(clientRatingPost.Orders))
+	for _, or := range clientRatingPost.Orders {
+		ord := or
+		go func() {
+			order := structs.RestaurantRatingPayload{
+				OrderId:              ord.OrderId,
+				Rating:               ord.Rating,
+				EstimatedWaitingTime: ord.EstimatedWaitingTime,
+				WaitingTime:          ord.WaitingTime,
+			}
+			add := res.Info[GetIndexForResId(ord.RestaurantId)].Address
+
+			avg_rating += SendRatingPaylodToRes(&order, add)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+
+	avg_fn := avg_rating / float64(len(clientRatingPost.Orders))
+	rating.Add(avg_fn)
+
+}
+
+func SendRatingPaylodToRes(py *structs.RestaurantRatingPayload, address string) float64 {
+
+	postBody, _ := json.Marshal(py)
+	responseBody := bytes.NewBuffer(postBody)
+	resp, err := http.Post("http://"+address+"/v2/rating", "application/json", responseBody)
+	if err != nil {
+		log.Fatalf("An Error Occured %v", err)
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var resResp structs.RestaurantRatingResponse
+	if err := json.Unmarshal([]byte(body), &resResp); err != nil {
+		panic(err)
+	}
+
+	resp.Body.Close()
+	return resResp.RestaurantAvgRating
 
 }
 
