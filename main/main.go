@@ -115,14 +115,28 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 	wg.Add(len(ords.Orders))
 	var clientResponse structs.ClientResponse
 	clientResponse.OrderId = ords.ClientId
+	deadResturantsId := make([]int, 0)
+
 	// Send order to Dining-Hall and wait for response
 	for i := range ords.Orders {
 		idx := i
 		go func() {
-			addr := res.Info[GetIndexForResId(ords.Orders[idx].RestaurantId)].Address
+			// in case Res have been removed
+			index := GetIndexForResId(ords.Orders[idx].RestaurantId)
+			if index == -1 {
+				wg.Done()
+				return
+			}
+			addr := res.Info[index].Address
 			// GET req to dining hall -> kitchen and returns the current number of orders being preparing
-			BusyIndex := GetBusyIndex(addr)
-
+			BusyIndex, err := GetBusyIndex(addr)
+			// Handle dead request to Restaurants
+			if err != nil {
+				deadResturantsId = append(deadResturantsId, ords.Orders[idx].RestaurantId)
+				wg.Done()
+				return
+			}
+			// If everythin is fine and restaurant is not busy
 			if BusyIndex == 0 {
 
 				clientResponse.Orders = append(clientResponse.Orders,
@@ -141,6 +155,14 @@ func ClientOrderPost(w http.ResponseWriter, r *http.Request) {
 
 	}
 	wg.Wait()
+	// Remove Res
+	for len(deadResturantsId) != 0 {
+		idx := GetIndexForResId(deadResturantsId[0])
+		res.Mutex.Lock()
+		res.Info = remove(res.Info, idx)
+		deadResturantsId = pop(deadResturantsId)
+		res.Mutex.Unlock()
+	}
 	resp, _ := json.Marshal(&clientResponse)
 	fmt.Fprint(w, string(resp))
 
@@ -160,11 +182,11 @@ func GetIndexForResId(id int) int {
 	return -1
 }
 
-func GetBusyIndex(address string) int {
+func GetBusyIndex(address string) (int, error) {
 
 	resp, err := http.Get("http://" + address + "/getOrderStatus")
 	if err != nil {
-		log.Fatalf("An Error Occured %v", err)
+		return -1, err
 	}
 	defer resp.Body.Close()
 
@@ -175,7 +197,7 @@ func GetBusyIndex(address string) int {
 
 	ok, _ := strconv.Atoi(string(body))
 
-	return ok
+	return ok, nil
 }
 
 func SendOrderToDH(ord *structs.OrderToDiningHall, address string) structs.OMResponse {
@@ -231,4 +253,15 @@ func GetMenu(w http.ResponseWriter, r *http.Request) {
 	resp, _ := json.Marshal(&sendMenu)
 	fmt.Fprint(w, string(resp))
 
+}
+
+func remove(slice []structs.RegisterPayload, s int) []structs.RegisterPayload {
+	return append(slice[:s], slice[s+1:]...)
+}
+
+func pop(slice []int) []int {
+	if len(slice) == 1 {
+		return []int{}
+	}
+	return slice[1:]
 }
